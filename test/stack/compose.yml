@@ -1,0 +1,15 @@
+name: wekan-mcp-test
+services:
+  mongo:
+    image: mongo:6
+    command: mongod --oplogSize 128 --quiet
+  wekan:
+    image: ghcr.io/wekan/wekan:v7.93
+    depends_on: [mongo]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/wekan
+      ROOT_URL: http://localhost:8091
+      WITH_API: "true"
+      PORT: "8080"
+      BROWSER_POLICY_ENABLED: "true"
+    ports: ["127.0.0.1:8091:8080"]

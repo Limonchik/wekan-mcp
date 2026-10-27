@@ -1,6 +1,6 @@
 {
   "name": "wekanmcpserver",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "MCP server for Wekan - made by namar0x0309 with ❤️ at GoAIX",
   "main": "dist/server.js",
   "type": "module",
@@ -8,10 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-
     "inspect": "mcp-inspector --config ./mcp-inspector-config.json --server wekan",
-
-    "inspect:watch": "npm run build && mcp-inspector --config ./mcp-inspector-config.json --server wekan"
+    "inspect:watch": "npm run build && mcp-inspector --config ./mcp-inspector-config.json --server wekan",
+    "test:e2e": "node test/e2e.mjs"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +19,7 @@
     "@modelcontextprotocol/sdk": "^1.20.2",
     "dotenv": "^17.2.3",
     "undici": "^7.16.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.9.2",

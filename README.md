@@ -118,3 +118,29 @@ npm run inspect:watch
 ```
 
 This will build the project and launch the inspector, automatically rebuilding when changes are detected.
+
+## Fork notes (branch `miem`)
+
+Fixes found while testing against a real Wekan v7.93 (Meteor 2.14) with a non-admin user:
+
+- `listBoards` used admin-only `GET /api/boards`; now `GET /api/users/{me}/boards`.
+- `createCard`/`commentCard` failed with 500: Wekan requires `authorId` (now the token owner, resolved via `GET /api/user`), comments use the `comment` field, `swimlaneId` is mandatory (defaults to the board's first swimlane).
+- `createCard` silently dropped `due`/`labels` (POST ignores them); they are now applied with a follow-up PUT.
+- `moveCard` hit a non-existent route (405); now uses `PUT /api/boards/{b}/lists/{currentList}/cards/{c}` and refuses lists/swimlanes from other boards.
+- Meteor errors returned as HTTP 200 + `{error, statusCode}` and HTML error pages are surfaced as tool errors instead of `x.map is not a function`.
+- Ids are validated before being put into URL paths; requests time out after 30 s; password mode logs in once instead of per request.
+- `.env` is read from the package directory (not the client's cwd), quietly, so stdout stays clean JSON-RPC.
+- New read-only tools: `getBoard` (labels, members), `getCard`.
+- `WEKAN_USER_ID` is optional now.
+
+For SSO/OIDC-only accounts (no password) use the browser session token:
+`localStorage.getItem('Meteor.loginToken')` in DevTools on the Wekan tab → `WEKAN_API_TOKEN`.
+
+### E2E test
+
+```bash
+docker compose -f test/stack/compose.yml up -d        # Wekan on http://127.0.0.1:8091
+for u in admin andy outsider; do node test/stack/seed-user.mjs http://127.0.0.1:8091 $u "Passw0rd!$u"; done
+npm run build && npm run test:e2e
+```
+The first seeded user (`admin`) becomes the Wekan admin. Never point the test at a production instance.
