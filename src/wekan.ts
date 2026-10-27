@@ -204,6 +204,16 @@ export class Wekan {
     const swimlaneId = input.swimlaneId ?? (await this.listSwimlanes(boardId))[0]?._id;
     if (!swimlaneId) throw new Error(`Board ${boardId} has no swimlanes`);
     await this.assertInBoard(boardId, listId, input.swimlaneId);
+    if (input.members?.length || input.labels?.length) {
+      // Wekan 12 logs a non-member in `members` as a security event, and such events disable the account
+      const board = await this.getBoard(boardId);
+      const memberIds = new Set((board.members ?? []).filter((m) => m.isActive).map((m) => m.userId));
+      const labelIds = new Set((board.labels ?? []).map((l) => l._id));
+      const strangers = (input.members ?? []).filter((m) => !memberIds.has(m));
+      const unknown = (input.labels ?? []).filter((l) => !labelIds.has(l));
+      if (strangers.length) throw new Error(`Not active members of board ${boardId}: ${strangers.join(", ")}`);
+      if (unknown.length) throw new Error(`Labels not on board ${boardId}: ${unknown.join(", ")}`);
+    }
 
     const body: any = { authorId: await this.userId(), title: input.title, swimlaneId };
     if (input.description) body.description = input.description;
@@ -230,6 +240,9 @@ export class Wekan {
   }
 
   async commentCard(boardId: string, cardId: string, text: string): Promise<WekanComment> {
+    // A card/board mismatch is a CWE-639 event in Wekan 12 and disables the account, so check it here
+    const card = await this.getCard(cardId);
+    if (card.boardId !== boardId) throw new Error(`Card ${cardId} is not on board ${boardId}`);
     return this.post(`/api/boards/${boardId}/cards/${cardId}/comments`, { authorId: await this.userId(), comment: text });
   }
 }

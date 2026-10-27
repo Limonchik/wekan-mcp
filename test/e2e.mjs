@@ -151,6 +151,20 @@ r = await call(c, "moveCard", { boardId: board._id, cardId: sCard, listId: lTodo
 const sc = await rest(outsider.token, "GET", `/api/cards/${sCard}`);
 check("moveCard foreign card -> error, card untouched", r.isError && sc.listId === sList, r.text.slice(0, 120));
 
+// Wekan 12 disables the account on CWE-639 style mismatches, so these must be refused client-side
+const ownCard = (await rest(andy.token, "GET", `/api/boards/${board._id}/lists/${lTodo}/cards`))[0]?._id;
+const andyOwnBoard = (await rest(andy.token, "POST", "/api/boards", { title: `Andy-${tag}`, owner: andy.id, permission: "private" }))._id;
+if (ownCard) {
+  r = await call(c, "commentCard", { boardId: andyOwnBoard, cardId: ownCard, text: "wrong board" });
+  check("commentCard with wrong boardId refused locally", r.isError && /not on board/.test(r.text), r.text.slice(0, 120));
+}
+r = await call(c, "createCard", { boardId: board._id, listId: lTodo, title: "stranger", members: [outsider.id] });
+check("createCard with non-member refused locally", r.isError && /Not active members/.test(r.text), r.text.slice(0, 120));
+r = await call(c, "createCard", { boardId: board._id, listId: lTodo, title: "bad label", labels: ["nolabel"] });
+check("createCard with foreign label refused locally", r.isError && /Labels not on board/.test(r.text), r.text.slice(0, 120));
+const relogin = await login("andy");
+check("account still enabled after refused calls", !!relogin.token, JSON.stringify(relogin).slice(0, 100));
+
 r = await call(c, "listLists", { boardId: "../../api/user" });
 check("path traversal in id rejected", r.isError, r.text.slice(0, 120));
 
@@ -162,8 +176,10 @@ await c.close();
 const cp = await startServer({ WEKAN_BASE_URL: BASE, WEKAN_USERNAME: "andy", WEKAN_PASSWORD: pw("andy") });
 r = await call(cp, "listBoards");
 check("password mode: listBoards", !r.isError && (r.data ?? []).some((b) => b.id === board._id), r.text.slice(0, 120));
-r = await call(cp, "commentCard", { boardId: board._id, cardId: cardId ?? "x", text: "pw mode" });
-check("password mode: commentCard", !r.isError, r.text.slice(0, 120));
+if (cardId) {
+  r = await call(cp, "commentCard", { boardId: board._id, cardId, text: "pw mode" });
+  check("password mode: commentCard", !r.isError, r.text.slice(0, 120));
+}
 await cp.close();
 
 // ---------- bad token ----------
