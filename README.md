@@ -121,7 +121,7 @@ This will build the project and launch the inspector, automatically rebuilding w
 
 ## Fork notes (branch `miem`)
 
-Fixes found while testing with a non-admin user. E2E-tested against Wekan v7.93 (Meteor 2.14) and v12.65 (Meteor 3):
+Fixes found while testing with a non-admin user. E2E-tested against Wekan v7.50, v7.80, v7.93 (Meteor 2.14) and v12.65 (Meteor 3):
 
 - `listBoards` used admin-only `GET /api/boards`; now `GET /api/users/{me}/boards`.
 - `createCard`/`commentCard` failed with 500: Wekan requires `authorId` (now the token owner, resolved via `GET /api/user`), comments use the `comment` field, `swimlaneId` is mandatory (defaults to the board's first swimlane).
@@ -131,7 +131,7 @@ Fixes found while testing with a non-admin user. E2E-tested against Wekan v7.93 
 - Ids are validated before being put into URL paths; requests time out after 30 s; password mode logs in once instead of per request.
 - `.env` is read from the package directory (not the client's cwd), quietly, so stdout stays clean JSON-RPC.
 - Wekan 12 disables an account that triggers a high-severity security event (e.g. commenting on a card via another board's URL, or putting a non-member into `members`). The server now checks card/board, member and label consistency itself before any write, so an LLM mixing up ids gets a tool error instead of a locked account.
-- New read-only tools: `getBoard` (labels, members), `getCard`.
+- New read-only tools: `getBoard` (labels, members), `getCard`. Wekan before ~7.9 has no `GET /api/cards/:id`; the server then finds the card through the board's lists (pass `boardId`).
 - `WEKAN_USER_ID` is optional now.
 
 For SSO/OIDC-only accounts (no password) use the browser session token:

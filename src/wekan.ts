@@ -71,6 +71,9 @@ export type CreateCardInput = {
 
 const TIMEOUT_MS = 30_000;
 
+// An unknown route makes Wekan serve its web app (HTML, HTTP 200) instead of a JSON error
+export class RouteMissingError extends Error {}
+
 // Meteor reports many API errors as HTTP 200 with {error, reason, statusCode} in the body
 function meteorError(data: any): string | null {
   if (data && typeof data === "object" && !Array.isArray(data) && "error" in data && ("statusCode" in data || "reason" in data)) {
@@ -141,6 +144,7 @@ export class Wekan {
     } catch {
       // Non-JSON means an HTML error page (500/403/405 or an unknown route)
       const msg = text.match(/<pre>([^<]*)<\/pre>/)?.[1] ?? "non-JSON response";
+      if (r.statusCode === 200) throw new RouteMissingError(`${method} ${path} -> route not supported by this Wekan`);
       throw new Error(`${method} ${path} -> ${r.statusCode} ${msg}`);
     }
 
@@ -197,7 +201,21 @@ export class Wekan {
   listLists(boardId: string): Promise<WekanList[]> { return this.get(`/api/boards/${boardId}/lists`); }
   listSwimlanes(boardId: string): Promise<WekanSwimlane[]> { return this.get(`/api/boards/${boardId}/swimlanes`); }
   listCards(boardId: string, listId: string): Promise<WekanCard[]> { return this.get(`/api/boards/${boardId}/lists/${listId}/cards`); }
-  getCard(cardId: string): Promise<WekanCard> { return this.get(`/api/cards/${cardId}`); }
+  async getCard(cardId: string, boardId?: string): Promise<WekanCard> {
+    try {
+      return await this.get(`/api/cards/${cardId}`);
+    } catch (e) {
+      // GET /api/cards/:id appeared in Wekan 7.8x-7.9x; older servers only have the list-scoped route
+      if (!(e instanceof RouteMissingError)) throw e;
+      if (!boardId) throw new Error("This Wekan has no GET /api/cards/:id, pass boardId as well");
+      for (const list of await this.listLists(boardId)) {
+        if ((await this.listCards(boardId, list._id)).some((c) => c._id === cardId)) {
+          return this.get(`/api/boards/${boardId}/lists/${list._id}/cards/${cardId}`);
+        }
+      }
+      throw new Error(`Card ${cardId} is not on board ${boardId}`);
+    }
+  }
 
   async createCard(boardId: string, listId: string, input: CreateCardInput): Promise<WekanCard> {
     // swimlaneId is mandatory for Wekan; default to the board's first swimlane
@@ -232,16 +250,16 @@ export class Wekan {
   async moveCard(boardId: string, cardId: string, body: { listId?: string; swimlaneId?: string }): Promise<WekanCard> {
     if (!body.listId && !body.swimlaneId) throw new Error("Pass listId and/or swimlaneId");
     // The update route needs the card's current list
-    const card = await this.getCard(cardId);
+    const card = await this.getCard(cardId, boardId);
     if (card.boardId !== boardId) throw new Error(`Card ${cardId} is not on board ${boardId}`);
     await this.assertInBoard(boardId, body.listId, body.swimlaneId);
     await this.put(`/api/boards/${boardId}/lists/${card.listId}/cards/${cardId}`, body);
-    return this.getCard(cardId);
+    return this.getCard(cardId, boardId);
   }
 
   async commentCard(boardId: string, cardId: string, text: string): Promise<WekanComment> {
     // A card/board mismatch is a CWE-639 event in Wekan 12 and disables the account, so check it here
-    const card = await this.getCard(cardId);
+    const card = await this.getCard(cardId, boardId);
     if (card.boardId !== boardId) throw new Error(`Card ${cardId} is not on board ${boardId}`);
     return this.post(`/api/boards/${boardId}/cards/${cardId}/comments`, { authorId: await this.userId(), comment: text });
   }

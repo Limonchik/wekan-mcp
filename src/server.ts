@@ -83,10 +83,11 @@ server.tool("listCards", "List cards in a board+list", {
   return json(cards.map((c) => ({ id: c._id, title: c.title, desc: c.description, swimlaneId: c.swimlaneId })));
 });
 
-server.tool("getCard", "Get full card details by id", {
-  cardId: id()
+server.tool("getCard", "Get full card details by id (pass boardId too: older Wekan needs it)", {
+  cardId: id(),
+  boardId: id().optional()
 }, async (args) => {
-  const c = await wekan.getCard(args.cardId);
+  const c = await wekan.getCard(args.cardId, args.boardId);
   return json({
     id: c._id, title: c.title, description: c.description, boardId: c.boardId, listId: c.listId,
     swimlaneId: c.swimlaneId, authorId: c.userId, members: c.members, assignees: c.assignees,

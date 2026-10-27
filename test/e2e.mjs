@@ -25,6 +25,17 @@ async function rest(token, method, path, body) {
   try { return JSON.parse(text); } catch { return text; }
 }
 
+// GET /api/cards/:id exists only since Wekan ~7.9; older servers need the list-scoped route
+async function cardRest(token, boardId, cardId) {
+  const direct = await rest(token, "GET", `/api/cards/${cardId}`);
+  if (typeof direct === "object") return direct;
+  for (const l of await rest(token, "GET", `/api/boards/${boardId}/lists`)) {
+    const cards = await rest(token, "GET", `/api/boards/${boardId}/lists/${l._id}/cards`);
+    if (cards.some((c) => c._id === cardId)) return rest(token, "GET", `/api/boards/${boardId}/lists/${l._id}/cards/${cardId}`);
+  }
+  return {};
+}
+
 async function login(u) {
   const r = await fetch(BASE + "/users/login", {
     method: "POST",
@@ -102,7 +113,7 @@ r = await call(c, "createCard", { boardId: board._id, listId: lTodo, title: "Р�
 const cardId = r.data?.id;
 check("createCard: without swimlaneId", !r.isError && !!cardId, r.text.slice(0, 160));
 if (cardId) {
-  const card = await rest(andy.token, "GET", `/api/cards/${cardId}`);
+  const card = await cardRest(andy.token, board._id, cardId);
   check("createCard: title/description (UTF-8) stored", card.title === "Расчёт мощностей" && card.description === "desc ✓");
   check("createCard: author is token owner", card.userId === andy.id, `userId=${card.userId}`);
   check("createCard: default swimlane", card.swimlaneId === board.defaultSwimlaneId, `swimlaneId=${card.swimlaneId}`);
@@ -118,21 +129,21 @@ r = await call(c, "listCards", { boardId: board._id, listId: lTodo });
 check("listCards", !r.isError && r.data?.some((x) => x.id === cardId), r.text.slice(0, 120));
 
 if (tools.includes("getCard") && cardId) {
-  r = await call(c, "getCard", { cardId });
+  r = await call(c, "getCard", { cardId, boardId: board._id });
   check("getCard", !r.isError && r.data?.id === cardId && r.data?.listId === lTodo && r.data?.dueAt === due, r.text.slice(0, 160));
 }
 
 if (cardId) {
   r = await call(c, "moveCard", { boardId: board._id, cardId, listId: lDoing });
-  let card = await rest(andy.token, "GET", `/api/cards/${cardId}`);
+  let card = await cardRest(andy.token, board._id, cardId);
   check("moveCard: to another list", !r.isError && card.listId === lDoing, `${r.text.slice(0, 120)} listId=${card.listId}`);
 
   r = await call(c, "moveCard", { boardId: board._id, cardId, swimlaneId: lane2 });
-  card = await rest(andy.token, "GET", `/api/cards/${cardId}`);
+  card = await cardRest(andy.token, board._id, cardId);
   check("moveCard: to another swimlane", !r.isError && card.swimlaneId === lane2 && card.listId === lDoing, `${r.text.slice(0, 120)} swimlane=${card.swimlaneId}`);
 
   r = await call(c, "moveCard", { boardId: board._id, cardId, listId: sList });
-  card = await rest(andy.token, "GET", `/api/cards/${cardId}`);
+  card = await cardRest(andy.token, board._id, cardId);
   check("moveCard: refuses list from another board", r.isError && card.listId === lDoing, r.text.slice(0, 120));
 
   r = await call(c, "commentCard", { boardId: board._id, cardId, text: "комментарий от MCP" });
@@ -148,7 +159,7 @@ r = await call(c, "createCard", { boardId: secret._id, listId: sList, title: "ha
 check("createCard on foreign board -> error", r.isError, r.text.slice(0, 120));
 
 r = await call(c, "moveCard", { boardId: board._id, cardId: sCard, listId: lTodo });
-const sc = await rest(outsider.token, "GET", `/api/cards/${sCard}`);
+const sc = await cardRest(outsider.token, secret._id, sCard);
 check("moveCard foreign card -> error, card untouched", r.isError && sc.listId === sList, r.text.slice(0, 120));
 
 // Wekan 12 disables the account on CWE-639 style mismatches, so these must be refused client-side
